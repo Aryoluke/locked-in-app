@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Self-hosted app: the backend is plain HTTP on the local network / Tailscale
+  (http://100.89.84.65:8000, http://192.168.0.95:8000). Android 9+ blocks
+  cleartext traffic by default, so allow it here. Revisit (narrow this down)
+  if the backend ever moves to HTTPS.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </base-config>
+</network-security-config>
