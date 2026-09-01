@@ -2,7 +2,9 @@ class AppConstants {
   AppConstants._();
 
   // API
-  static const String defaultBaseUrl = 'http://localhost:8000';
+  // 127.0.0.1 instead of localhost: Windows resolves localhost to IPv6 (::1) first,
+  // and the dev server only listens on IPv4 (0.0.0.0) -> SocketException -> "No internet".
+  static const String defaultBaseUrl = 'http://127.0.0.1:8000';
   static const String apiVersion = '/api';
   static const Duration apiTimeout = Duration(seconds: 30);
   static const Duration syncInterval = Duration(seconds: 30);
