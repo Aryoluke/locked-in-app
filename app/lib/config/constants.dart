@@ -6,7 +6,8 @@ class AppConstants {
   // and the dev server only listens on IPv4 (0.0.0.0) -> SocketException -> "No internet".
   static const String defaultBaseUrl = 'http://127.0.0.1:8000';
   static const String apiVersion = '/api';
-  static const Duration apiTimeout = Duration(seconds: 30);
+  // 90s: covers Render free-tier cold starts (~60s) and flaky mobile networks.
+  static const Duration apiTimeout = Duration(seconds: 90);
   static const Duration syncInterval = Duration(seconds: 30);
 
   // Endpoints
