@@ -11,7 +11,16 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 30  # 30 days
     ADMIN_INVITE_CODE: str = "LOCKEDIN2026"
-    CORS_ORIGINS: list[str] = ["*"]
+
+    # Plain string, comma-separated. MUST stay str: pydantic-settings tries
+    # to json.loads() env values for list fields, and Render sets "*" which
+    # is not valid JSON -> SettingsError at startup -> deploy fails.
+    CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "*")
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+
     # Set true in production (Render). Disables uvicorn --reload.
     PRODUCTION: bool = os.getenv("PRODUCTION", "false").lower() in ("1", "true", "yes")
 
