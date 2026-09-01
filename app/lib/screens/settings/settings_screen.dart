@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../config/constants.dart';
 import '../../config/theme.dart';
@@ -8,6 +9,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/sync_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/api_service.dart';
+import '../../services/notification_service.dart';
 import '../auth/login_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -30,11 +32,73 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _shareBody = false;
   bool _shareSocial = true;
 
+  // Daily check-in reminder
+  bool _dailyReminder = false;
+  String _reminderTime = '19:00';
+
   @override
   void initState() {
     super.initState();
     final user = context.read<AuthProvider>().user;
     _nameController.text = user?.displayName ?? '';
+    _loadReminderPrefs();
+  }
+
+  Future<void> _loadReminderPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _dailyReminder = prefs.getBool('daily_reminder_enabled') ?? false;
+      _reminderTime = prefs.getString('daily_reminder_time') ?? '19:00';
+    });
+  }
+
+  Future<void> _setDailyReminder(bool enabled) async {
+    setState(() => _dailyReminder = enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('daily_reminder_enabled', enabled);
+    await NotificationService.instance.refreshScheduledReminder();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(enabled
+              ? 'Daily check-in set for $_reminderTime'
+              : 'Daily check-in reminders off'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _pickReminderTime() async {
+    final parts = _reminderTime.split(':');
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(
+        hour: int.tryParse(parts[0]) ?? 19,
+        minute: parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0,
+      ),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          timePickerTheme: const TimePickerThemeData(
+            backgroundColor: AppColors.surface,
+            dialBackgroundColor: AppColors.surfaceElevated,
+            hourMinuteTextColor: AppColors.textPrimary,
+            dayPeriodTextColor: AppColors.textPrimary,
+            dayPeriodColor: AppColors.surfaceElevated,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked == null) return;
+    final time = '${picked.hour.toString().padLeft(2, '0')}:'
+        '${picked.minute.toString().padLeft(2, '0')}';
+    setState(() => _reminderTime = time);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('daily_reminder_time', time);
+    if (_dailyReminder) {
+      await NotificationService.instance.refreshScheduledReminder();
+    }
   }
 
   Future<void> _saveProfile() async {
@@ -170,6 +234,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: themeProvider.isDark,
             activeColor: AppColors.primary,
             onChanged: (_) => themeProvider.toggle(),
+          ),
+          const SizedBox(height: 24),
+
+          // ===== Reminders =====
+          _SectionHeader('REMINDERS'),
+          const SizedBox(height: 8),
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.surfaceBorder),
+            ),
+            child: Column(
+              children: [
+                SwitchListTile(
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16),
+                  title: const Text('Daily check-in reminder'),
+                  subtitle: const Text('A nudge to log your day and keep '
+                      'the chain alive'),
+                  value: _dailyReminder,
+                  activeColor: AppColors.primary,
+                  onChanged: _setDailyReminder,
+                ),
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                ListTile(
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16),
+                  enabled: _dailyReminder,
+                  leading: const Icon(Icons.schedule),
+                  title: const Text('Reminder time'),
+                  subtitle: Text(
+                    _reminderTime,
+                    style: const TextStyle(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  trailing: const Icon(Icons.chevron_right,
+                      color: AppColors.textMuted),
+                  onTap: _pickReminderTime,
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 24),
 

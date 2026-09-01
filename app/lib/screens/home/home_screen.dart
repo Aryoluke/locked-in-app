@@ -12,6 +12,7 @@ import '../../providers/daily_provider.dart';
 import '../../providers/habit_provider.dart';
 import '../../providers/social_provider.dart';
 import '../../providers/study_provider.dart';
+import '../../providers/sync_provider.dart';
 import '../../providers/workout_provider.dart';
 import '../../providers/xp_provider.dart';
 import '../../widgets/offline_indicator.dart';
@@ -61,7 +62,8 @@ class HomeScreen extends StatelessWidget {
       body: RefreshIndicator(
         color: AppColors.primary,
         backgroundColor: AppColors.surface,
-        onRefresh: () async {},
+        onRefresh: () =>
+          Provider.of<SyncProvider>(context, listen: false).syncNow(),
         child: ListView(
           padding: const EdgeInsets.only(bottom: 24),
           children: [

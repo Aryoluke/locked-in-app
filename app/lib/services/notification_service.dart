@@ -1,4 +1,6 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -21,9 +23,13 @@ class NotificationService {
     if (_initialized) return;
 
     tzdata.initializeTimeZones();
-    // Daily reminders use the local timezone (UTC unless a location is set).
-    if (tz.local.name == 'UTC') {
-      tz.setLocalLocation(tz.getLocation('Europe/London'));
+    // Resolve the device's real timezone so daily reminders fire at local time.
+    // Falls back to UTC if the platform can't report one.
+    try {
+      final tzName = await FlutterTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(tzName));
+    } catch (_) {
+      tz.setLocalLocation(tz.getLocation('UTC'));
     }
 
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -131,11 +137,33 @@ class NotificationService {
       'Log your day and keep the chain alive.',
       scheduled,
       details,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      // Inexact is permission-free and more than accurate enough for a daily
+      // nudge; exact alarms would need SCHEDULE_EXACT_ALARM on Android 12+.
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: DateTimeComponents.time,
     );
+  }
+
+  Future<void> cancelDailyCheckIn() => _plugin.cancel(110);
+
+  /// Applies the stored daily-reminder preference.
+  ///
+  /// Reads SharedPreferences on every app start so a reboot or reinstall of the
+  /// app does not silently drop the schedule. Defaults remain off.
+  Future<void> refreshScheduledReminder() async {
+    final prefs = await SharedPreferences.getInstance();
+    final enabled = prefs.getBool('daily_reminder_enabled') ?? false;
+    if (!enabled) {
+      await _plugin.cancel(110);
+      return;
+    }
+    final raw = prefs.getString('daily_reminder_time') ?? '19:00';
+    final parts = raw.split(':');
+    final hour = int.tryParse(parts[0]) ?? 19;
+    final minute = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
+    await scheduleDailyCheckIn(Time(hour: hour, minute: minute));
   }
 
   Future<void> cancelAll() => _plugin.cancelAll();

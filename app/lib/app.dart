@@ -98,6 +98,7 @@ class _MainShellState extends State<MainShell> {
           ? FloatingActionButton.extended(
               onPressed: () {
                 // Quick action: start a workout
+                Navigator.pushNamed(context, AppRoutes.workoutLog);
               },
               backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,

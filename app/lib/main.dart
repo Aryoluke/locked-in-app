@@ -23,8 +23,9 @@ Future<void> main() async {
   await LocalDbService.instance.init();
   await LocalDbService.instance.seedExercises();
 
-  // Initialize notifications
+  // Initialize notifications + restore the user's scheduled daily reminder
   await NotificationService.instance.init();
+  await NotificationService.instance.refreshScheduledReminder();
 
   runApp(
     MultiProvider(
