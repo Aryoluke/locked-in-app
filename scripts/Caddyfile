@@ -1,0 +1,47 @@
+# LOCKED IN - Caddy reverse proxy (production HTTPS example)
+#
+# Purpose: expose the FastAPI server (127.0.0.1:8000) to the internet over
+# valid HTTPS so friends can reach it from ANY network (home, school, gym,
+# mobile data) without a VPN. Caddy automatically issues and renews the cert.
+#
+# Setup:
+#   1. Point a DNS A record (lockedin.example.com) at your server's IP.
+#   2. Install Caddy:  https://caddyserver.com/download
+#   3. Replace "lockedin.example.com" with your domain.
+#   4. Put this file at /etc/caddy/Caddyfile and run:
+#        systemctl enable --now caddy
+#
+# Security: clients must still pass the app's OWN login (email+password+JWT),
+# so this layer just gives encryption. Add `basic_auth` below if you want an
+# extra gate before the app-level auth.
+
+lockedin.example.com {
+	encode zstd gzip
+
+	# Reverse proxy to the FastAPI server
+	reverse_proxy 127.0.0.1:8000
+
+	# Uncomment to add an extra username/password gate in front of the app:
+	# basic_auth {
+	# 	squad $2a$14$...replace.with.bcrypt.hash...
+	# }
+
+	# Optional: harden headers
+	header {
+		-X-Server
+		-Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-X-Frame-Options "DENY"
+		-Referrer-Policy "no-referrer"
+	}
+}
+
+# Optional: also serve the Flutter web build (iPhone web app) on the same box.
+# Point the app clients at the SAME origin as the API. Build web app first:
+#   cd ../app && flutter build web
+# Then uncomment:
+#
+# lockedin.example.com {
+# 	root * /var/www/lockedin
+# 	file_server
+# 	reverse_proxy /api/* 127.0.0.1:8000
+# }
