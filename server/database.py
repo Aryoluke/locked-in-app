@@ -3,7 +3,13 @@ from sqlalchemy.orm import DeclarativeBase
 
 from config import settings
 
-engine = create_async_engine(settings.DATABASE_URL, echo=False)
+# Render's managed Postgres connection strings come back as postgres://... which
+# SQLAlchemy treats as the sync dialect. Normalize to the async driver.
+_db_url = settings.DATABASE_URL
+if _db_url.startswith("postgres://"):
+    _db_url = _db_url.replace("postgres://", "postgresql+asyncpg://", 1)
+
+engine = create_async_engine(_db_url, echo=False)
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 

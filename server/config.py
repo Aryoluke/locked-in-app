@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 30  # 30 days
     ADMIN_INVITE_CODE: str = "LOCKEDIN2026"
     CORS_ORIGINS: list[str] = ["*"]
+    # Set true in production (Render). Disables uvicorn --reload.
+    PRODUCTION: bool = os.getenv("PRODUCTION", "false").lower() in ("1", "true", "yes")
 
     class Config:
         env_file = ".env"

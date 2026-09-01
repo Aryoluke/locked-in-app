@@ -1,0 +1,29 @@
+# Render blueprint: one click -> managed Postgres + Live API on HTTPS
+# See https://render.com/docs/blueprint-spec for format details.
+databases:
+  - name: lockedin-pg
+    plan: free
+    databaseName: lockedin
+    user: lockedin
+
+services:
+  - type: web
+    name: locked-in-api
+    runtime: docker
+    rootDir: server
+    region: singapore
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: PRODUCTION
+        value: "true"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: lockedin-pg
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ADMIN_INVITE_CODE
+        value: LOCKEDIN2026
+      - key: CORS_ORIGINS
+        value: "*"
