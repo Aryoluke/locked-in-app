@@ -1,4 +1,6 @@
 import datetime as dt
+import logging
+import os
 import uuid
 from contextlib import asynccontextmanager
 
@@ -15,10 +17,15 @@ from routes import (
     sync, user, workouts,
 )
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+log = logging.getLogger("lockedin")
+
 
 async def _seed_initial_data():
     """Creates all tables and seeds the initial admin invite code / first admin."""
+    log.info("[STARTUP] Initializing database...")
     await init_db()
+    log.info("[STARTUP] Database initialized — seeding admin data...")
 
     async with async_session() as db:
         from sqlalchemy import select
@@ -69,7 +76,11 @@ async def _seed_initial_data():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    log.info("[STARTUP] LOCKED IN API starting... PRODUCTION=%s", settings.PRODUCTION)
+    log.info("[STARTUP] DATABASE_URL scheme: %s", settings.DATABASE_URL.split("://")[0] if "://" in settings.DATABASE_URL else "unknown")
+    log.info("[STARTUP] Admin invite code: %s", settings.ADMIN_INVITE_CODE)
     await _seed_initial_data()
+    log.info("[STARTUP] Startup complete — ready to accept connections")
     yield
 
 

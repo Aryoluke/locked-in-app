@@ -3,6 +3,7 @@
 databases:
   - name: lockedin-pg
     plan: free
+    region: oregon
     databaseName: lockedin
     user: lockedin
 
@@ -11,7 +12,7 @@ services:
     name: locked-in-api
     runtime: docker
     rootDir: server
-    region: singapore
+    region: oregon
     plan: free
     healthCheckPath: /health
     envVars:
