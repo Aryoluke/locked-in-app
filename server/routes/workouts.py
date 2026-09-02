@@ -368,6 +368,7 @@ async def personal_records(
 ):
     result = await db.execute(
         select(WorkoutSet)
+        .options(selectinload(WorkoutSet.session))
         .join(WorkoutSession, WorkoutSession.id == WorkoutSet.session_id)
         .where(
             WorkoutSession.user_id == current_user.id,
