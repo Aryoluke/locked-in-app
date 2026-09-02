@@ -100,6 +100,11 @@ async def apply_push_changes(
             existing = result.scalar_one_or_none()
 
         if existing is None:
+            # Try to find by UNIQUE constraint (e.g. daily_logs user_id+date)
+            if owner_field is not None:
+                existing = await _find_existing_by_unique(db, model, owner_field, user_id, data)
+
+        if existing is None:
             # Create new record (only for user-owned tables)
             if owner_field is None:
                 conflicts.append({
@@ -130,6 +135,7 @@ async def apply_push_changes(
                 if new_obj.id is None:
                     new_obj.id = data.get("id") or _new_id()
                 db.add(new_obj)
+                await db.flush()
                 applied.append({"id": str(new_obj.id), "table": table, "status": "created"})
             except Exception as e:
                 import logging
@@ -245,3 +251,40 @@ def _to_dt(iso: str | None):
 def _new_id() -> str:
     import uuid
     return str(uuid.uuid4())
+
+
+# Maps tables with UNIQUE constraints (beyond PK) to the fields that form them.
+# When an INSERT fails due to these constraints, we look up by these fields.
+_UNIQUE_CONSTRAINTS: dict[str, list[str]] = {
+    "daily_logs": ["user_id", "date"],
+    "habits": ["user_id", "name"],
+    "streaks": ["user_id", "streak_type"],
+    "xp_balances": ["user_id"],
+    "competition_entries": ["competition_id", "user_id"],
+    "friendships": ["user_id_1", "user_id_2"],
+}
+
+
+async def _find_existing_by_unique(
+    db: AsyncSession, model, owner_field: str | None,
+    user_id: str, data: dict
+):
+    """Try to find an existing row by UNIQUE constraint fields after an INSERT failure."""
+    table_name = model.__tablename__
+    unique_fields = _UNIQUE_CONSTRAINTS.get(table_name)
+    if not unique_fields:
+        return None
+
+    conditions = []
+    for field in unique_fields:
+        if field == "user_id":
+            conditions.append(getattr(model, field) == user_id)
+        elif field in data:
+            conditions.append(getattr(model, field) == data[field])
+
+    if not conditions:
+        return None
+
+    from sqlalchemy import and_
+    result = await db.execute(select(model).where(and_(*conditions)))
+    return result.scalar_one_or_none()
