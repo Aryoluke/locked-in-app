@@ -91,7 +91,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
                   validator: (v) {
-                    if (v == null || !v.contains('@')) {
+                    if (v == null || !RegExp(r'^[\w.-]+@[\w.-]+\.\w{2,}$').hasMatch(v)) {
                       return 'Enter a valid email';
                     }
                     return null;

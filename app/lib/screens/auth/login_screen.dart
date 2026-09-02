@@ -116,7 +116,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       if (v == null || v.trim().isEmpty) {
                         return 'Enter your email';
                       }
-                      if (!v.contains('@')) {
+                      if (v == null || !RegExp(r'^[\w.-]+@[\w.-]+\.\w{2,}$').hasMatch(v)) {
                         return 'Enter a valid email';
                       }
                       return null;
@@ -160,9 +160,22 @@ class _LoginScreenState extends State<LoginScreen> {
                     alignment: Alignment.centerRight,
                     child: TextButton(
                       onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content: Text('Password reset coming soon')),
+                        showDialog<void>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('Password Reset'),
+                            content: const Text(
+                              'LOCKED IN is invite-only and self-hosted.\n\n'
+                              'Contact support at support@lockedin.app '
+                              'to reset your password.',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx),
+                                child: const Text('OK'),
+                              ),
+                            ],
+                          ),
                         );
                       },
                       child: const Text('Forgot password?'),

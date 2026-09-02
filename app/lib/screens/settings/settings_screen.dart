@@ -1,5 +1,9 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -9,6 +13,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/sync_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/api_service.dart';
+import '../../services/local_db_service.dart';
 import '../../services/notification_service.dart';
 import '../auth/login_screen.dart';
 
@@ -41,7 +46,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     final user = context.read<AuthProvider>().user;
     _nameController.text = user?.displayName ?? '';
+    _serverUrl = ApiService.instance.baseUrl;
     _loadReminderPrefs();
+    _loadPrivacyPrefs();
   }
 
   Future<void> _loadReminderPrefs() async {
@@ -50,6 +57,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _dailyReminder = prefs.getBool('daily_reminder_enabled') ?? false;
       _reminderTime = prefs.getString('daily_reminder_time') ?? '19:00';
+    });
+  }
+
+  Future<void> _loadPrivacyPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _shareWorkouts = prefs.getBool('privacy_workouts') ?? true;
+      _shareHabits = prefs.getBool('privacy_habits') ?? true;
+      _shareStudy = prefs.getBool('privacy_study') ?? true;
+      _shareBody = prefs.getBool('privacy_body') ?? false;
+      _shareSocial = prefs.getBool('privacy_social') ?? true;
     });
   }
 
@@ -142,11 +161,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _exportData() async {
-    // Placeholder: would use share/export utilities
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-          content: Text('Export requires a file share utility to be attached')),
-    );
+    try {
+      final db = LocalDbService.instance;
+      final tables = [
+        'users', 'workouts', 'workout_sets', 'templates',
+        'habits', 'habit_completions', 'daily_logs', 'streaks',
+        'xp_transactions', 'body_logs', 'study_logs', 'subjects',
+        'pomodoro_sessions', 'mood_checkins', 'competitions',
+        'friends', 'activity_events', 'leaderboard',
+      ];
+      final exportData = <String, dynamic>{
+        'exported_at': DateTime.now().toUtc().toIso8601String(),
+      };
+      for (final table in tables) {
+        exportData[table] = await db.queryAll(table);
+      }
+      final json = const JsonEncoder.withIndent('  ').convert(exportData);
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/locked_in_export.json');
+      await file.writeAsString(json);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Exported to ${file.path}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export failed: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _deleteAccount() async {
@@ -154,9 +199,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Delete Account?'),
+        title: const Text('Log Out?'),
         content: const Text(
-          'This permanently deletes your account and all data. This cannot be undone.',
+          'This will log you out of your account. Server data cannot be deleted from the client yet.',
         ),
         actions: [
           TextButton(
@@ -166,7 +211,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('DELETE'),
+            child: const Text('LOG OUT'),
           ),
         ],
       ),
@@ -305,16 +350,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             child: Column(
               children: [
-                _privacyToggle('Share workouts', _shareWorkouts,
-                    (v) => setState(() => _shareWorkouts = v)),
-                _privacyToggle('Share habits', _shareHabits,
-                    (v) => setState(() => _shareHabits = v)),
-                _privacyToggle('Share study', _shareStudy,
-                    (v) => setState(() => _shareStudy = v)),
-                _privacyToggle('Share body metrics', _shareBody,
-                    (v) => setState(() => _shareBody = v)),
-                _privacyToggle('Share social activity', _shareSocial,
-                    (v) => setState(() => _shareSocial = v)),
+                _privacyToggle('Share workouts', _shareWorkouts, (v) async {
+                  setState(() => _shareWorkouts = v);
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool('privacy_workouts', v);
+                }),
+                _privacyToggle('Share habits', _shareHabits, (v) async {
+                  setState(() => _shareHabits = v);
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool('privacy_habits', v);
+                }),
+                _privacyToggle('Share study', _shareStudy, (v) async {
+                  setState(() => _shareStudy = v);
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool('privacy_study', v);
+                }),
+                _privacyToggle('Share body metrics', _shareBody, (v) async {
+                  setState(() => _shareBody = v);
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool('privacy_body', v);
+                }),
+                _privacyToggle('Share social activity', _shareSocial, (v) async {
+                  setState(() => _shareSocial = v);
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool('privacy_social', v);
+                }),
               ],
             ),
           ),
@@ -436,7 +496,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Padding(
               padding: EdgeInsets.all(16),
               child: Text(
-                'LOCKED IN v1.0.0\nFitness · Mind · Life · Squad',
+                '${AppConstants.appName} ${AppConstants.appVersion}\n${AppConstants.appTagline}',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: AppColors.textMuted),
               ),

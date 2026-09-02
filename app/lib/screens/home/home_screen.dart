@@ -204,21 +204,23 @@ class HomeScreen extends StatelessWidget {
   }
 
   void _showVoiceLogDialog(BuildContext context) {
+    final controller = TextEditingController();
     showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(24),
+        padding: EdgeInsets.fromLTRB(24, 24, 24, MediaQuery.of(ctx).viewInsets.bottom + 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.mic, size: 40, color: AppColors.primary),
+            const Icon(Icons.notes, size: 40, color: AppColors.primary),
             const SizedBox(height: 12),
             const Text(
-              'Voice Log',
+              'Quick Note',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
@@ -227,14 +229,36 @@ class HomeScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Voice logging requires a device that supports speech-to-text.\nHold to record your day.',
+              'Jot down a thought, workout note, or daily reflection.',
               textAlign: TextAlign.center,
               style: TextStyle(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('NOT AVAILABLE YET'),
+            TextField(
+              controller: controller,
+              maxLines: 4,
+              autofocus: true,
+              decoration: const InputDecoration(
+                hintText: 'Type your note here...',
+                border: OutlineInputBorder(),
+              ),
+              style: const TextStyle(color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  final text = controller.text.trim();
+                  Navigator.pop(ctx);
+                  if (text.isNotEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Note saved')),
+                    );
+                  }
+                },
+                child: const Text('SAVE NOTE'),
+              ),
             ),
           ],
         ),
@@ -540,12 +564,12 @@ class _WaterTracker extends StatelessWidget {
               percent: percent,
               lineWidth: 8,
               backgroundColor: AppColors.surfaceElevated,
-              progressColor: const Color(0xFF3B82F6),
+              progressColor: AppColors.info,
               center: Icon(
                 Icons.water_drop,
                 color: percent >= 1
                     ? AppColors.success
-                    : const Color(0xFF3B82F6),
+                    : AppColors.info,
                 size: 28,
               ),
             ),
@@ -597,7 +621,7 @@ class _QuickActions extends StatelessWidget {
   Widget build(BuildContext context) {
     final actions = [
       ('Log Workout', Icons.fitness_center, AppColors.primary, 'workout'),
-      ('Log Water', Icons.water_drop, const Color(0xFF3B82F6), 'water'),
+      ('Log Water', Icons.water_drop, AppColors.info, 'water'),
       ('Start Study', Icons.school, AppColors.mindColor, 'study'),
       ('Voice Log', Icons.mic, AppColors.gold, 'voice'),
     ];

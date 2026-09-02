@@ -30,6 +30,11 @@ class AppConstants {
   static const String templatesEndpoint = '/templates';
   static const String prsEndpoint = '/prs';
 
+  // Version / branding
+  static const String appName = 'LOCKED IN';
+  static const String appVersion = 'v1.1.0';
+  static const String appTagline = 'Fitness · Mind · Life · Squad';
+
   // Storage Keys
   static const String tokenKey = 'auth_token';
   static const String refreshTokenKey = 'refresh_token';
