@@ -118,11 +118,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _saveServerUrl() async {
     final url = _serverController.text.trim();
     if (url.isNotEmpty) {
-      await ApiService.instance.setBaseUrl(url);
+      // Clear existing tokens and sync state — the new server won't recognise
+      // tokens issued by a different server.  The user will need to log in again.
+      final api = ApiService.instance;
+      final oldUrl = api.baseUrl;
+      if (url != oldUrl) {
+        api.clearTokens();
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(AppConstants.tokenKey);
+        await prefs.remove(AppConstants.refreshTokenKey);
+        await prefs.remove(AppConstants.lastSyncKey);
+      }
+      await api.setBaseUrl(url);
       setState(() => _serverUrl = url);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Server URL updated')),
+          SnackBar(content: Text(url != oldUrl
+              ? 'Server URL updated — please log in again'
+              : 'Server URL unchanged')),
         );
       }
     }

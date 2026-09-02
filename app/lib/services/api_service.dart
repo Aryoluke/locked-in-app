@@ -291,22 +291,33 @@ class ApiService {
       delete(endpoint, id);
 
   // ===== Sync =====
-  Future<List<dynamic>> syncPush(List<Map<String, dynamic>> batch) async {
-    final data = await _request('POST', '${AppConstants.syncEndpoint}/push', body: {'batch': batch});
-    return data is List ? data : [];
+  /// Push changes to the server. [changes] must match the server's SyncRecord
+  /// format: a list of {"table_name": "...", "records": [{...}, ...]}.
+  /// Returns the full server response (SyncResponse) including post-push pull.
+  Future<Map<String, dynamic>> syncPush(
+      List<Map<String, dynamic>> changes, String? clientTimestamp) async {
+    final data = await _request(
+      'POST',
+      '${AppConstants.syncEndpoint}/push',
+      body: {
+        'changes': changes,
+        if (clientTimestamp != null) 'client_timestamp': clientTimestamp,
+      },
+    );
+    return data is Map<String, dynamic> ? data : {};
   }
 
+  /// Pull changes since [since]. Returns the full SyncResponse with
+  /// server_timestamp, changes (list of SyncRecord groups), and conflicts.
   Future<Map<String, dynamic>> syncPull(DateTime since) async {
     final data = await _request(
       'POST',
       '${AppConstants.syncEndpoint}/pull',
       body: {'since': since.toUtc().toIso8601String()},
     );
-    return _asStringMap(data);
-  }
-
-  Future<void> syncResolve(Map<String, dynamic> resolution) async {
-    await _request('POST', '${AppConstants.syncEndpoint}/resolve', body: resolution);
+    // Return raw Map — do NOT use _asStringMap which strips Lists/Maps.
+    if (data is Map<String, dynamic>) return data;
+    return {};
   }
 
   // Helpers

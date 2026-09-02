@@ -29,8 +29,40 @@ class SyncService {
   SyncState status = SyncState.idle;
   int pendingCount = 0;
 
+  // ── Client entity type → server table name ──────────────────────────
+  static const Map<String, String> _entityToServerTable = {
+    'workout': 'workout_sessions',
+    'workout_set': 'workout_sets',
+    'habit': 'habits',
+    'habit_log': 'habit_logs',
+    'daily_log': 'daily_logs',
+    'body_log': 'body_logs',
+    'sleep_log': 'sleep_logs',
+    'supplement_log': 'supplement_logs',
+    'study_log': 'study_logs',
+    'pomodoro': 'pomodoro_sessions',
+    'streak': 'streaks',
+    'xp': 'xp_transactions',
+    'user': 'users',
+  };
+
+  // ── Server table name → local table name ────────────────────────────
+  // Tables not listed here are silently skipped (no local equivalent yet).
+  static const Map<String, String> _serverToLocalTable = {
+    'workout_sessions': 'workouts',
+    'workout_sets': 'workout_sets',
+    'habits': 'habits',
+    'habit_logs': 'habit_completions',
+    'daily_logs': 'daily_logs',
+    'body_logs': 'body_logs',
+    'study_logs': 'study_logs',
+    'pomodoro_sessions': 'pomodoro_sessions',
+    'streaks': 'streaks',
+    'xp_transactions': 'xp_transactions',
+    'users': 'users',
+  };
+
   Future<void> init() async {
-    // Start periodic sync
     _syncTimer?.cancel();
     _syncTimer = Timer.periodic(AppConstants.syncInterval, (_) {
       if (_enabled && !_isSyncing) {
@@ -58,39 +90,49 @@ class SyncService {
     await _queueChange(entityType, entityId, 'upsert', data);
     pendingCount = await _db.pendingCount();
     _setStatus(SyncState.hasPending);
-    // Fire-and-forget immediate sync
     if (!_isSyncing && _enabled) {
       sync();
     }
   }
 
   // Delete through: remove locally, queue delete for server
-  Future<void> deleteLocal(String table, String entityType, String entityId) async {
+  Future<void> deleteLocal(
+      String table, String entityType, String entityId) async {
     await _db.deleteById(table, entityId);
     await _queueChange(entityType, entityId, 'delete', {});
     pendingCount = await _db.pendingCount();
     _setStatus(SyncState.hasPending);
   }
 
-  Future<void> _queueChange(String entityType, String entityId, String op, Map<String, dynamic> payload) async {
+  Future<void> _queueChange(String entityType, String entityId, String op,
+      Map<String, dynamic> payload) async {
     final db = await _db.database;
-    await db.insert('pending_changes', {
-      'idempotency_key': '${entityType}_$entityId',
-      'entity_type': entityType,
-      'entity_id': entityId,
-      'operation': op,
-      'payload_json': jsonEncode(payload),
-      'queued_at': DateTime.now().toIso8601String(),
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.insert(
+      'pending_changes',
+      {
+        'idempotency_key': '${entityType}_$entityId',
+        'entity_type': entityType,
+        'entity_id': entityId,
+        'operation': op,
+        'payload_json': jsonEncode(payload),
+        'queued_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
 
-    await db.insert('sync_status', {
-      'entity_type': entityType,
-      'entity_id': entityId,
-      'status': 'pending',
-      'updated_at': DateTime.now().toIso8601String(),
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.insert(
+      'sync_status',
+      {
+        'entity_type': entityType,
+        'entity_id': entityId,
+        'status': 'pending',
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 
+  /// Full sync cycle: push then pull.
   Future<void> sync() async {
     if (_isSyncing) return;
     _isSyncing = true;
@@ -98,68 +140,116 @@ class SyncService {
 
     final summary = SyncSummary(lastSyncAt: DateTime.now());
     try {
-      // 1. Push pending changes
       await _pushPending(summary);
-      // 2. Pull remote changes since last sync
       await _pullChanges(summary);
-      // 3. Persist last sync timestamp
-      await _db.setMeta('last_sync', DateTime.now().toUtc().toIso8601String());
+      await _db.setMeta(
+          'last_sync', DateTime.now().toUtc().toIso8601String());
       pendingCount = await _db.pendingCount();
       summary.lastSyncAt = DateTime.now();
       _setStatus(pendingCount == 0 ? SyncState.synced : SyncState.hasPending);
       _summaryController.add(summary);
     } catch (e) {
+      // ignore: avoid_print
+      print('[SYNC] Error: $e');
       _setStatus(SyncState.offline);
     } finally {
       _isSyncing = false;
     }
   }
 
+  // ── PUSH ────────────────────────────────────────────────────────────
   Future<void> _pushPending(SyncSummary summary) async {
     final db = await _db.database;
-    final pendingRows = await db.query('pending_changes', orderBy: 'queued_at ASC');
+    final pendingRows =
+        await db.query('pending_changes', orderBy: 'queued_at ASC');
     if (pendingRows.isEmpty) return;
 
-    // Batch in groups of 50
+    // Group pending changes by server table name to match the server's
+    // SyncRecord format: {"table_name": "...", "records": [{...}]}.
+    final Map<String, List<Map<String, dynamic>>> grouped = {};
+    for (final row in pendingRows) {
+      final entityType = row['entity_type'] as String;
+      final serverTable = _entityToServerTable[entityType];
+      if (serverTable == null) continue; // unknown type, skip
+
+      final payload = _decodePayload(row['payload_json'] as String?);
+      final record = <String, dynamic>{
+        'id': row['entity_id'],
+        'data': payload,
+        'timestamp': row['queued_at'],
+      };
+      grouped.putIfAbsent(serverTable, () => []).add(record);
+    }
+
+    if (grouped.isEmpty) return;
+
+    // Send in chunks of 50 records total
     var index = 0;
-    while (index < pendingRows.length) {
-      final slice = pendingRows.skip(index).take(50).toList();
+    final allRows = pendingRows.toList();
+    while (index < allRows.length) {
+      final slice = allRows.skip(index).take(50).toList();
       index += 50;
 
-      final batchPayload = [
-        for (final row in slice)
+      // Rebuild changes from this slice
+      final sliceGrouped = <String, List<Map<String, dynamic>>>{};
+      for (final row in slice) {
+        final entityType = row['entity_type'] as String;
+        final serverTable = _entityToServerTable[entityType];
+        if (serverTable == null) continue;
+
+        final payload = _decodePayload(row['payload_json'] as String?);
+        final record = <String, dynamic>{
+          'id': row['entity_id'],
+          'data': payload,
+          'timestamp': row['queued_at'],
+        };
+        sliceGrouped.putIfAbsent(serverTable, () => []).add(record);
+      }
+
+      final sliceChanges = [
+        for (final entry in sliceGrouped.entries)
           {
-            'entity_type': row['entity_type'],
-            'entity_id': row['entity_id'],
-            'operation': row['operation'],
-            'payload': _decodePayload(row['payload_json'] as String?),
-            'idempotency_key': row['idempotency_key'],
+            'table_name': entry.key,
+            'records': entry.value,
           }
       ];
 
       try {
-        await _api.syncPush(batchPayload);
+        final response = await _api.syncPush(
+            sliceChanges, DateTime.now().toUtc().toIso8601String());
+
         // Mark all as synced
         for (final row in slice) {
           await _db.markSynced(
               row['entity_type'] as String, row['entity_id'] as String);
         }
         summary.itemsPushed += slice.length;
+
+        // Apply the server's post-push response (which includes a full pull)
+        final serverChanges = response['changes'];
+        if (serverChanges is List) {
+          await _applyServerChanges(serverChanges, summary);
+        }
       } catch (e) {
-        // Partial failure: mark failed records so they appear in status, keep queue
+        // Mark failed records
         for (final row in slice) {
-          await db.insert('sync_status', {
-            'entity_type': row['entity_type'],
-            'entity_id': row['entity_id'],
-            'status': 'failed',
-            'updated_at': DateTime.now().toIso8601String(),
-          }, conflictAlgorithm: ConflictAlgorithm.replace);
+          await db.insert(
+            'sync_status',
+            {
+              'entity_type': row['entity_type'],
+              'entity_id': row['entity_id'],
+              'status': 'failed',
+              'updated_at': DateTime.now().toIso8601String(),
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
         }
         rethrow;
       }
     }
   }
 
+  // ── PULL ────────────────────────────────────────────────────────────
   Future<void> _pullChanges(SyncSummary summary) async {
     final lastSync = await _db.getMeta('last_sync');
     final since = lastSync != null && lastSync.isNotEmpty
@@ -167,58 +257,45 @@ class SyncService {
         : DateTime.fromMillisecondsSinceEpoch(0);
 
     final result = await _api.syncPull(since);
-    final items = result['changes'];
-    if (items is! List) return;
 
-    for (final raw in items) {
-      final change = ServerChange.fromJson(
-          Map<String, dynamic>.from(raw as Map));
-      await _applyServerChange(change);
-      summary.itemsPulled++;
+    // Server returns SyncResponse: {"server_timestamp", "changes": [SyncRecord...], "conflicts"}
+    // Each SyncRecord is {"table_name": "...", "records": [{id, data, timestamp, ...}]}
+    final serverChanges = result['changes'];
+    if (serverChanges is List) {
+      await _applyServerChanges(serverChanges, summary);
     }
   }
 
-  Future<void> _applyServerChange(ServerChange change) async {
-    final table = _tableForType(change.entityType);
-    if (table == null) return;
+  /// Apply a list of SyncRecord groups from the server.
+  /// Each element: {"table_name": "workout_sessions", "records": [{id, data, ...}]}
+  Future<void> _applyServerChanges(
+      List serverChanges, SyncSummary summary) async {
+    for (final group in serverChanges) {
+      if (group is! Map) continue;
+      final serverTable = group['table_name'] as String?;
+      if (serverTable == null) continue;
 
-    if (change.operation == 'delete') {
-      await _db.deleteById(table, change.entityId);
-      await _db.markSynced(change.entityType, change.entityId);
-      return;
-    }
+      final localTable = _serverToLocalTable[serverTable];
+      if (localTable == null) continue; // no local table for this server table
 
-    // Last-write-wins: server change replaced directly
-    final upserted = _flattenChanges(change.changes, change.entityType);
-    await _db.upsert(table, upserted);
-    await _db.markSynced(change.entityType, change.entityId);
-  }
+      final records = group['records'];
+      if (records is! List) continue;
 
-  Map<String, dynamic> _flattenChanges(Map<String, dynamic> changes, String type) {
-    // entityId is embedded in changes by the server as 'id'
-    return changes;
-  }
+      for (final rec in records) {
+        if (rec is! Map) continue;
+        final data = rec['data'];
+        if (data is! Map) continue;
 
-  String? _tableForType(String entityType) {
-    switch (entityType) {
-      case 'user':
-        return 'users';
-      case 'workout':
-        return 'workouts';
-      case 'habit':
-        return 'habits';
-      case 'daily_log':
-        return 'daily_logs';
-      case 'study_log':
-        return 'study_logs';
-      case 'body_log':
-        return 'body_logs';
-      case 'streak':
-        return 'streaks';
-      case 'xp':
-        return 'xp_transactions';
-      default:
-        return null;
+        final recordData = Map<String, dynamic>.from(data);
+        final id = rec['id'] ?? recordData['id'];
+        if (id == null) continue;
+
+        // Ensure 'id' is in the data for upsert
+        recordData['id'] = id;
+
+        await _db.upsert(localTable, recordData);
+        summary.itemsPulled++;
+      }
     }
   }
 
