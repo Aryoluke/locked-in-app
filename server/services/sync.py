@@ -227,7 +227,11 @@ def _to_dt(iso: str | None):
     if not iso:
         return None
     try:
-        return datetime.fromisoformat(iso)
+        dt = datetime.fromisoformat(iso)
+        # Strip timezone info so comparisons with naive DB timestamps work
+        if dt.tzinfo is not None:
+            dt = dt.replace(tzinfo=None)
+        return dt
     except (ValueError, TypeError):
         return None
 
