@@ -109,7 +109,10 @@ async def apply_push_changes(
                 })
                 continue
             try:
-                coerced = dict(data)
+                # Filter to only columns the model actually has, so unknown
+                # client fields don't crash model(**...) construction.
+                known_cols = {c.name for c in model.__table__.columns}
+                coerced = {k: v for k, v in data.items() if k in known_cols}
                 # Coerce ISO strings for DateTime columns into datetime objects so
                 # SQLite/SQLAlchemy can insert them (client sends ISO strings).
                 for col in model.__table__.columns:
@@ -128,8 +131,11 @@ async def apply_push_changes(
                     new_obj.id = data.get("id") or _new_id()
                 db.add(new_obj)
                 applied.append({"id": str(new_obj.id), "table": table, "status": "created"})
-            except Exception:
-                conflicts.append({"id": record_id, "table": table, "reason": "create_failed"})
+            except Exception as e:
+                import logging
+                log = logging.getLogger("lockedin.sync")
+                log.warning("create_failed table=%s id=%s err=%s data_keys=%s", table, record_id, e, list(coerced.keys()))
+                conflicts.append({"id": record_id, "table": table, "reason": f"create_failed: {e}"})
         else:
             # Existing record: LWW per field
             conflict_detected = False

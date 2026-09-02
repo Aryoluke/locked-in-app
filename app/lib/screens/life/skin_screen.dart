@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../config/theme.dart';
 
@@ -47,13 +48,13 @@ class _SkinScreenState extends State<SkinScreen> {
           // AM Routine
           _SectionHeader('AM ROUTINE'),
           const SizedBox(height: 8),
-          _RoutineCard(title: 'MORNING', items: _amRoutine, icon: Icons.wb_sunny),
+          _RoutineCard(title: 'MORNING', items: _amRoutine, icon: Icons.wb_sunny, storageKey: 'skin_am_routine'),
           const SizedBox(height: 24),
 
           // PM Routine
           _SectionHeader('PM ROUTINE'),
           const SizedBox(height: 8),
-          _RoutineCard(title: 'EVENING', items: _pmRoutine, icon: Icons.nightlight),
+          _RoutineCard(title: 'EVENING', items: _pmRoutine, icon: Icons.nightlight, storageKey: 'skin_pm_routine'),
           const SizedBox(height: 24),
 
           // Supplements
@@ -95,11 +96,13 @@ class _RoutineCard extends StatefulWidget {
   final String title;
   final List<_RoutineItem> items;
   final IconData icon;
+  final String storageKey;
 
   const _RoutineCard({
     required this.title,
     required this.items,
     required this.icon,
+    required this.storageKey,
   });
 
   @override
@@ -108,6 +111,31 @@ class _RoutineCard extends StatefulWidget {
 
 class _RoutineCardState extends State<_RoutineCard> {
   final Set<int> _completed = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getStringList(widget.storageKey) ?? const [];
+    if (!mounted) return;
+    setState(() {
+      _completed
+        ..clear()
+        ..addAll(stored.map(int.parse));
+    });
+  }
+
+  Future<void> _save() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      widget.storageKey,
+      _completed.map((i) => i.toString()).toList(),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -155,6 +183,7 @@ class _RoutineCardState extends State<_RoutineCard> {
                 } else {
                   _completed.add(index);
                 }
+                _save();
               }),
               child: Padding(
                 padding:
@@ -226,6 +255,31 @@ class _GroomingChecklistState extends State<_GroomingChecklist> {
   final Set<int> _done = {};
 
   @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getStringList('skin_grooming') ?? const [];
+    if (!mounted) return;
+    setState(() {
+      _done
+        ..clear()
+        ..addAll(stored.map(int.parse));
+    });
+  }
+
+  Future<void> _save() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      'skin_grooming',
+      _done.map((i) => i.toString()).toList(),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -244,6 +298,7 @@ class _GroomingChecklistState extends State<_GroomingChecklist> {
                 } else {
                   _done.add(i);
                 }
+                _save();
               }),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6),
@@ -299,6 +354,24 @@ class _SupplementTrackerState extends State<_SupplementTracker> {
   final Set<String> _taken = {};
 
   @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getStringList('skin_supplements') ?? const [];
+    if (!mounted) return;
+    setState(() => _taken..clear()..addAll(stored));
+  }
+
+  Future<void> _save() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('skin_supplements', _taken.toList());
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -328,6 +401,7 @@ class _SupplementTrackerState extends State<_SupplementTracker> {
                 } else {
                   _taken.add(s);
                 }
+                _save();
               }),
             ),
         ],

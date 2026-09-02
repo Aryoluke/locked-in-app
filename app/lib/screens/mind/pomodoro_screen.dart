@@ -24,13 +24,23 @@ class PomodoroScreen extends StatelessWidget {
 }
 
 /// Reusable pomodoro timer UI + logic wired to [StudyProvider].
-class PomodoroTimerWidget extends StatelessWidget {
+class PomodoroTimerWidget extends StatefulWidget {
   final StudyProvider study;
 
   const PomodoroTimerWidget({super.key, required this.study});
 
   @override
+  State<PomodoroTimerWidget> createState() => _PomodoroTimerWidgetState();
+}
+
+class _PomodoroTimerWidgetState extends State<PomodoroTimerWidget> {
+  String _selectedTag = 'Study';
+
+  StudyProvider get study => widget.study;
+
+  @override
   Widget build(BuildContext context) {
+    final study = widget.study;
     final remaining = study.pomodoroRemaining;
     final minutes = remaining.inMinutes;
     final seconds = remaining.inSeconds % 60;
@@ -122,21 +132,21 @@ class PomodoroTimerWidget extends StatelessWidget {
                   Expanded(
                     child: _PresetButton(
                       label: '25m',
-                      onTap: () => study.startPomodoro(),
+                      onTap: () => study.startPomodoro(tag: _selectedTag),
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: _PresetButton(
                       label: '45m',
-                      onTap: () => study.startPomodoro(minutes: 45),
+                      onTap: () => study.startPomodoro(minutes: 45, tag: _selectedTag),
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: _PresetButton(
                       label: '60m',
-                      onTap: () => study.startPomodoro(minutes: 60),
+                      onTap: () => study.startPomodoro(minutes: 60, tag: _selectedTag),
                     ),
                   ),
                 ],
@@ -145,7 +155,7 @@ class PomodoroTimerWidget extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: () => study.startPomodoro(),
+                  onPressed: () => study.startPomodoro(tag: _selectedTag),
                   icon: const Icon(Icons.play_arrow),
                   label: const Text('START FOCUS'),
                 ),
@@ -193,11 +203,13 @@ class PomodoroTimerWidget extends StatelessWidget {
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
-                children: const [
-                  ChoiceChip(label: Text('Study'), selected: true),
-                  ChoiceChip(label: Text('Work'), selected: false),
-                  ChoiceChip(label: Text('Deep Work'), selected: false),
-                  ChoiceChip(label: Text('Creation'), selected: false),
+                children: [
+                  for (final tag in ['Study', 'Work', 'Deep Work', 'Creation'])
+                    ChoiceChip(
+                      label: Text(tag),
+                      selected: _selectedTag == tag,
+                      onSelected: (_) => setState(() => _selectedTag = tag),
+                    ),
                 ],
               ),
             ],

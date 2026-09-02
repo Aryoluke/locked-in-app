@@ -30,6 +30,13 @@ class HomeScreen extends StatelessWidget {
     final workouts = context.watch<WorkoutProvider>();
     final social = context.watch<SocialProvider>();
 
+    final study = context.watch<StudyProvider>();
+    final todayStudyMinutes = study.studyLogs
+        .where((log) =>
+            log.date.year == DateTime.now().year &&
+            log.date.month == DateTime.now().month &&
+            log.date.day == DateTime.now().day)
+        .fold<int>(0, (sum, log) => sum + log.minutes);
     final streak = auth.user?.currentStreak ?? 0;
     final user = auth.user;
 
@@ -127,7 +134,7 @@ class HomeScreen extends StatelessWidget {
               workoutActive: workouts.activeWorkout != null,
               workoutCount: workouts.activeSets.length,
               habitsDue: _habitsDue(context),
-              studyMinutes: 0,
+              studyMinutes: todayStudyMinutes,
             ),
 
             const SizedBox(height: 16),

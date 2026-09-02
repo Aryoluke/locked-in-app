@@ -227,6 +227,12 @@ class WorkoutProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> deleteCustomExercise(String id) async {
+    await _db.deleteById('exercises', id);
+    _library.removeWhere((e) => e.id == id);
+    notifyListeners();
+  }
+
   // Public getters
   List<PersonalRecord> get personalRecords => List.unmodifiable(_prs);
   List<Workout> get history => List.unmodifiable(_workouts);

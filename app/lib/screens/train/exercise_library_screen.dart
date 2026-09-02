@@ -207,10 +207,29 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
     }
   }
 
-  void _deleteExercise(String id) {
-    // Custom exercise deletion requires provider support; see provider
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Custom exercise delete is handled in provider')),
+  Future<void> _deleteExercise(String id) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Delete Exercise'),
+        content: const Text('Are you sure you want to remove this custom exercise?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
     );
+
+    if (confirmed != true) return;
+    await Provider.of<WorkoutProvider>(context, listen: false)
+        .deleteCustomExercise(id);
   }
 }
